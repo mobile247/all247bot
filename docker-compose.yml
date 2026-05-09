@@ -1,0 +1,18 @@
+services:
+  all247:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/data/all247.db
+    volumes:
+      - ./data:/data
+    networks:
+      - all247_net
+
+networks:
+  all247_net:
+    driver: bridge
