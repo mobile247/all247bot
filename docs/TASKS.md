@@ -112,6 +112,7 @@ Token-efficient chunking: work one phase per session. Mark tasks [x] as done.
   - `/all` — active check → rate limit → restrict_all_to_admins check → fetch members → send mentions → optional delete trigger
   - `/all` delete_trigger: if deletion fails (bot lacks admin rights), reply with one-time warning instead of silent fail
   - `/syncmembers` — admin only → sync_admins → reply count
+  - `/registermembers` — admin only → parse TEXT_MENTION entities → upsert users → report count + warn on skipped @username mentions
   - `/config` — admin only → view or update config; on invalid key/value reply with error message listing valid options (sourced from ValueError raised by group_service)
   - `/deactivate` — admin only → deactivate → confirm
 - [x] Implement `event_handlers.py`
@@ -169,3 +170,4 @@ Token-efficient chunking: work one phase per session. Mark tasks [x] as done.
 | ADR-011 | delete_trigger requires bot admin rights; failure replies with warning | BRD minimal-access principle preserved — admin rights optional, not default | 2026-05-09 |
 | ADR-012 | Docker HEALTHCHECK via heartbeat file touch | No external deps, detects stuck-but-alive process that restart:unless-stopped misses | 2026-05-09 |
 | ADR-014 | `get_connection` is `@asynccontextmanager` (not async func returning connection) | Python 3.13 raises `RuntimeError: threads can only be started once` if `async with conn` is used after `await aiosqlite.connect()` — contextmanager avoids double-start | 2026-05-09 |
+| ADR-015 | `/registermembers` only processes TEXT_MENTION entities (not plain MENTION) | MENTION entities carry only a username string — no user_id available from Telegram API, so upsert impossible; TEXT_MENTION provides full User object | 2026-05-10 |
