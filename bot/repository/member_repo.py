@@ -124,3 +124,18 @@ async def hard_delete_stale_members(
     )
     await conn.commit()
     return cur.rowcount
+
+
+async def delete_group_members(
+    conn: aiosqlite.Connection, group_id: int
+) -> int:
+    """
+    Hard-delete ALL member records for a group. Used when the bot leaves a group.
+    Returns number of rows deleted.
+    """
+    cur = await conn.execute(
+        "DELETE FROM members WHERE group_id = ?",
+        (group_id,),
+    )
+    await conn.commit()
+    return cur.rowcount
