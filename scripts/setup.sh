@@ -18,7 +18,7 @@ echo "Upgrading pip..."
 pip install --upgrade pip
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Create local data directory for SQLite
 mkdir -p data
