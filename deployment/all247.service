@@ -1,0 +1,37 @@
+[Unit]
+Description=all247 Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/all247
+Environment="PATH=/opt/all247/env/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/opt/all247"
+
+# Python-dotenv will load .env from WorkingDirectory
+# -u for unbuffered output so logs appear immediately in journalctl
+ExecStart=/opt/all247/env/bin/python -u -m bot.main
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=all247
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/all247
+
+# Resource limits
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
