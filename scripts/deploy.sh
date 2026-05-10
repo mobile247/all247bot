@@ -84,9 +84,10 @@ if [ -f /tmp/all247.env.backup ]; then
     mv /tmp/all247.env.backup /opt/all247/.env
 fi
 
-# Create SQLite data directory
+# Create SQLite data directory (owner-only — contains member PII)
 echo "Creating data directory..."
 mkdir -p /opt/all247/data
+chmod 700 /opt/all247/data
 
 # Set up Python virtual environment
 echo "Setting up virtual environment..."

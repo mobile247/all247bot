@@ -148,6 +148,9 @@ def main() -> None:
 
     if config.webhook_url:
         logger.info("Starting in webhook mode on port %d", config.webhook_port)
+        # The bot token doubles as the URL path secret (standard Telegram pattern).
+        # It will appear in web server access logs — restrict log file permissions
+        # (chmod 640) or suppress logging for the bot path in nginx/caddy config.
         app.run_webhook(
             listen="0.0.0.0",
             port=config.webhook_port,
