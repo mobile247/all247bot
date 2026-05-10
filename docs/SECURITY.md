@@ -12,7 +12,7 @@
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-To report a vulnerability, open a [GitHub Security Advisory](https://github.com/your-org/all247/security/advisories/new) on this repository. This keeps the report private until a fix is available.
+To report a vulnerability, open a **GitHub Security Advisory** on this repository (`Security` tab → `Report a vulnerability`). This keeps the report private until a fix is available.
 
 Please include:
 - Description of the vulnerability
