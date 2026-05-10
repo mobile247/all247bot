@@ -7,6 +7,8 @@ in the /migrations directory, applied in filename order (idempotent).
 import logging
 import os
 import pathlib
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 import aiosqlite
 
@@ -15,25 +17,39 @@ logger = logging.getLogger(__name__)
 MIGRATIONS_DIR = pathlib.Path(__file__).parent.parent.parent / "migrations"
 
 
-async def get_connection(db_path: str) -> aiosqlite.Connection:
-    """Open a database connection with foreign keys enabled."""
-    conn = await aiosqlite.connect(db_path)
-    await conn.execute("PRAGMA foreign_keys = ON")
-    await conn.execute("PRAGMA journal_mode = WAL")
-    conn.row_factory = aiosqlite.Row
-    return conn
+@asynccontextmanager
+async def get_connection(db_path: str) -> AsyncIterator[aiosqlite.Connection]:
+    """Open a database connection with foreign keys enabled.
+    WAL mode is set once at startup in run_migrations — not repeated here."""
+    async with aiosqlite.connect(db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA foreign_keys = ON")
+        yield conn
 
 
 async def run_migrations(db_path: str) -> None:
     """Apply all pending SQL migrations in order. Safe to call on every startup."""
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
+    # Enable WAL mode once — it persists on disk, no need to re-apply per connection.
+    async with aiosqlite.connect(db_path) as conn:
+        async with conn.execute("PRAGMA journal_mode = WAL") as cur:
+            row = await cur.fetchone()
+        if not row or row[0] != "wal":
+            logger.warning(
+                "SQLite WAL mode could not be enabled (got %r). "
+                "Concurrent write performance may be degraded.",
+                row[0] if row else "unknown",
+            )
+        else:
+            logger.debug("SQLite WAL mode confirmed")
+
     migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
     if not migration_files:
         logger.warning("No migration files found in %s", MIGRATIONS_DIR)
         return
 
-    async with await get_connection(db_path) as conn:
+    async with get_connection(db_path) as conn:
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS _migrations (
