@@ -96,6 +96,17 @@ class MemberService:
             for row in rows
         ]
 
+    async def purge_members(self, group_id: int) -> int:
+        """
+        Hard-delete ALL member records for a group.
+        Called when the bot leaves a group via /leave.
+        Returns count of deleted rows.
+        """
+        async with db.get_connection(self._db_path) as conn:
+            count = await member_repo.delete_group_members(conn, group_id)
+        logger.info("Members purged: group_id=%d count=%d", group_id, count)
+        return count
+
     async def prune_stale_if_configured(self, group_id: int, days: int) -> int:
         """
         If days > 0, set is_active=0 for members with no last_seen_at activity
