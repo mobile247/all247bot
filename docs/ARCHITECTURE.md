@@ -101,21 +101,31 @@ SQLite stored in a host-mounted volume at `/data/`.
 
 ## Manual E2E Test Checklist
 
-_To be completed in Phase 4._
+Run these against a real Telegram test group before each release.
+Check BotFather: Privacy Mode must be **DISABLED** before testing passive discovery.
 
-- [ ] Add bot to group → no action taken
-- [ ] Non-admin sends /setup → rejected
-- [ ] Admin sends /setup → activated
-- [ ] /all in inactive group → silently ignored
-- [ ] /all with no members → "No members found. Try /syncmembers first."
-- [ ] /all with members → mentions sent
-- [ ] /all within cooldown → time remaining reply
-- [ ] /syncmembers → admins synced, count reported
-- [ ] /config → shows current config
-- [ ] /config cooldown 30 → updates cooldown
-- [ ] /config delete_trigger on → deletes /all message after processing (bot must have admin rights; failure warns user)
-- [ ] /config restrict_all_to_admins on → non-admins get rejected on /all
-- [ ] /all by non-admin when restrict_all_to_admins=on → rejected
-- [ ] Member leaves group → is_active=0
-- [ ] Member rejoins → is_active=1
-- [ ] Group with 1001+ members → cap error message
+- [ ] Add bot to group → no action taken, group remains inactive
+- [ ] Non-admin sends /setup → "Only group admins can use /setup."
+- [ ] Admin sends /setup → activated, admin count reported
+- [ ] /setup again in same group → "Bot is already active in this group."
+- [ ] /all in inactive group → "Bot not active in this group. Use /setup first."
+- [ ] /all with no known members other than sender → "No members found yet. Send some messages first."
+- [ ] /all sender is excluded from mention output
+- [ ] Member sends a message → passively discovered (send /all after to verify)
+- [ ] /all with members → mentions sent as reply to /all message
+- [ ] /all within cooldown window → "Please wait Xs before using /all again."
+- [ ] /syncmembers → admins synced, count reported + API limitation note shown
+- [ ] /config (no args) → shows current config for group
+- [ ] /config invalid_key foo → error listing valid keys
+- [ ] /config cooldown foo → error listing valid values
+- [ ] /config cooldown 30 → cooldown updated; /all then blocked for 30s
+- [ ] /config delete_trigger on → /all message deleted after send (bot needs admin rights)
+- [ ] /config delete_trigger on, bot not admin → warning reply instead of silent fail
+- [ ] /config mention_mode username → /all uses @username; fallback to HTML mention if no username
+- [ ] /config restrict_all_to_admins on → non-admin /all returns "Only group admins can use /all."
+- [ ] /deactivate by non-admin → rejected
+- [ ] /deactivate by admin → deactivated; /all returns inactive message
+- [ ] Member leaves group → is_active=0; not mentioned in next /all
+- [ ] Member rejoins → is_active=1; mentioned in next /all
+- [ ] Bot removed from group → group auto-deactivated (is_active=0 in DB)
+- [ ] Group with 1001+ known members → "Member count N exceeds maximum 1000" error reply
