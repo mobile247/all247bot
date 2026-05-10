@@ -2,10 +2,6 @@
 
 Privacy-first Telegram bot that adds `@all` (mention-everyone) functionality to group chats.
 
-> **Status:** Under active development. Not yet ready for production use.
-
----
-
 > **Before you do anything else:**
 > Telegram bots run with **Privacy Mode enabled by default**. In this mode the bot cannot see
 > regular group messages, which means passive member discovery will **silently fail** — the bot
@@ -82,10 +78,30 @@ docker compose up -d
 | Command | Who | Description |
 |---|---|---|
 | `/setup` | Admin | Activate bot in group |
-| `/all` | Anyone | Mention all known members |
-| `/syncmembers` | Admin | Sync admins into member registry |
+| `/all` | Anyone* | Mention all known members |
+| `/syncmembers` | Admin | Sync current admins into member registry |
+| `/registermembers` | Admin | Bulk-register members from a forwarded message |
 | `/config` | Admin | View or update group settings |
-| `/deactivate` | Admin | Deactivate bot in group |
+| `/deactivate` | Admin | Deactivate bot (keeps data) |
+| `/leave` | Admin | Purge all data and remove bot from group |
+
+\* Admins only when `restrict_all_to_admins` is enabled.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `BOT_TOKEN` | **Yes** | — | Telegram Bot token from @BotFather |
+| `DB_PATH` | No | `./data/all247.db` | Path to SQLite database file |
+| `LOG_LEVEL` | No | `INFO` | Logging level (`INFO`, `WARNING`, `ERROR`) |
+| `WEBHOOK_URL` | No | — | Enable webhook mode (leave unset for long polling) |
+| `WEBHOOK_PORT` | No | `8443` | Port for webhook listener |
+| `DEFAULT_COOLDOWN_SECONDS` | No | `0` | Default `/all` cooldown for new groups (seconds) |
+| `RATE_LIMIT_PURGE_DAYS` | No | `7` | Days to retain rate limit log entries |
+| `STALE_MEMBER_PRUNE_DAYS` | No | `0` | Mark inactive members after N days without activity (0 = disabled) |
+| `MAX_MENTIONABLE_MEMBERS` | No | `1000` | Hard cap on members per `/all` (increase at your own risk) |
 
 ---
 
