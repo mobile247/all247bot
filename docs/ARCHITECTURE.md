@@ -57,7 +57,7 @@ Telegram API
 | `services/member_service.py` | Member registry management |
 | `services/mention_service.py` | Mention building, batching, delivery |
 | `services/rate_limit_service.py` | Cooldown enforcement, rate_limit_log |
-| `handlers/command_handlers.py` | /setup /all /syncmembers /config /deactivate |
+| `handlers/command_handlers.py` | /setup /all /syncmembers /registermembers /config /deactivate /leave |
 | `handlers/event_handlers.py` | Passive discovery, join/leave events |
 | `utils/telegram_helpers.py` | Admin check, mention string builders |
 
@@ -78,6 +78,9 @@ Telegram API
 | ADR-011 | delete_trigger failure replies with warning, not silent fail | Detectable failure is better than invisible — BRD minimal-access preserved |
 | ADR-012 | Docker HEALTHCHECK via heartbeat file | Catches stuck-but-alive process; no external deps |
 | ADR-013 | SQLite WAL mode enabled on every connection | Eliminates database-is-locked under concurrent async writes |
+| ADR-014 | `get_connection` is `@asynccontextmanager` (not async func) | Python 3.13 raises `RuntimeError: threads can only be started once` if `async with conn` follows `await aiosqlite.connect()` — contextmanager avoids double-start |
+| ADR-015 | `/registermembers` processes `TEXT_MENTION` entities only (not `MENTION`) | `MENTION` entities carry only a username string — no user_id available, so upsert is impossible; `TEXT_MENTION` provides a full User object |
+| ADR-016 | `/leave` hard-deletes member registry and bot self-removes via `leave_chat()` | Clean-slate reset for groups; reply sent before `leave_chat()` so confirmation is visible |
 
 ## Hard Limits (not operator-configurable)
 
@@ -129,3 +132,8 @@ Check BotFather: Privacy Mode must be **DISABLED** before testing passive discov
 - [ ] Member rejoins → is_active=1; mentioned in next /all
 - [ ] Bot removed from group → group auto-deactivated (is_active=0 in DB)
 - [ ] Group with 1001+ known members → "Member count N exceeds maximum 1000" error reply
+- [ ] /registermembers by non-admin → rejected
+- [ ] /registermembers with TEXT_MENTION entities → users upserted, count reported
+- [ ] /registermembers with plain @username mentions → warning: skipped (no user_id)
+- [ ] /leave by non-admin → rejected
+- [ ] /leave by admin → confirmation reply sent, member registry purged, group deactivated, bot leaves

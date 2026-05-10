@@ -143,13 +143,13 @@ Token-efficient chunking: work one phase per session. Mark tasks [x] as done.
 - [x] Integration test: batch send simulation with mock Telegram API
 - [x] Privacy verification test: log output scan (no message content)
 - [x] DB schema audit test (no message content columns)
-- [ ] Complete README.md (setup guide, BotFather privacy mode warning, env vars)
-- [ ] Complete ARCHITECTURE.md (decisions log, diagrams)
-- [ ] Complete PRIVACY.md (data handling policy)
-- [ ] Complete SECURITY.md (responsible disclosure instructions)
-- [ ] Secrets scan (no hardcoded credentials)
-- [ ] Pin Docker base image to digest for reproducibility (replace `python:3.11-slim` tag with `python:3.11-slim@sha256:<digest>`; TODO comment already in Dockerfile)
-- [ ] Decide and commit license (MIT recommended)
+- [x] Complete README.md (setup guide, BotFather privacy mode warning, env vars)
+- [x] Complete ARCHITECTURE.md (decisions log, diagrams)
+- [x] Complete PRIVACY.md (data handling policy)
+- [x] Complete SECURITY.md (responsible disclosure instructions)
+- [x] Secrets scan (no hardcoded credentials)
+- [x] Pin Docker base image to digest for reproducibility (`python:3.11-slim@sha256:a5b427ace4900267d93db34138e512325c6fa6af84ad5e4ed5f3b36258cc4142`)
+- [x] Decide and commit license (MIT)
 - [ ] Tag v1.0.0
 
 ---
