@@ -1,6 +1,6 @@
 """
 Command handlers — respond to Telegram bot commands.
-Commands: /setup, /all, /syncmembers, /registermembers, /config, /deactivate
+Commands: /setup, /all, /syncmembers, /registermembers, /config, /deactivate, /leave
 
 Privacy guarantee: no message content is logged or stored at any point.
 """
@@ -259,6 +259,40 @@ async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     await msg.reply_text(f"Config updated: {key} = {value}")
+
+
+async def leave_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    /leave — purge all member data for this group, deactivate, and bot leaves.
+    Admin-only. Irreversible: member registry is hard-deleted.
+    Reply is sent BEFORE leaving so the confirmation is visible.
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in _GROUP_TYPES:
+        await msg.reply_text("/leave can only be used in group chats.")
+        return
+
+    if not await is_group_admin(context.bot, chat.id, user.id):
+        await msg.reply_text("Only group admins can use /leave.")
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    member_svc: MemberService = context.bot_data["member_service"]
+
+    await member_svc.purge_members(chat.id)
+    await group_svc.deactivate(chat.id, user.id)
+
+    await msg.reply_text(
+        "Member registry cleared. Bot is leaving the group.\n"
+        "Add the bot again and run /setup to start fresh."
+    )
+    await context.bot.leave_chat(chat.id)
+    logger.info("Bot left group after /leave: group_id=%d", chat.id)
 
 
 async def deactivate_handler(
