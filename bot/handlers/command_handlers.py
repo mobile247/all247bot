@@ -1,6 +1,6 @@
 """
 Command handlers — respond to Telegram bot commands.
-Commands: /setup, /all, /syncmembers, /config, /deactivate
+Commands: /setup, /all, /syncmembers, /registermembers, /config, /deactivate
 
 Privacy guarantee: no message content is logged or stored at any point.
 """
@@ -8,7 +8,7 @@ Privacy guarantee: no message content is logged or stored at any point.
 import html
 import logging
 
-from telegram import Update
+from telegram import MessageEntity, Update
 from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
@@ -151,6 +151,66 @@ async def syncmembers_handler(
         "Note: The Telegram API does not allow listing all group members. "
         "Non-admin members are added automatically when they send any message in the group."
     )
+
+
+async def register_members_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    /registermembers — bulk-register mentioned users into the member registry.
+    Admin-only. Designed for existing groups where the bot missed join events.
+
+    Only TEXT_MENTION entities are registered (Telegram provides a full User object).
+    Plain @username MENTION entities are skipped — no user_id is available from them.
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in _GROUP_TYPES:
+        await msg.reply_text("/registermembers can only be used in group chats.")
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    if not await group_svc.is_active(chat.id):
+        await msg.reply_text("Bot not active in this group. Use /setup first.")
+        return
+
+    if not await is_group_admin(context.bot, chat.id, user.id):
+        await msg.reply_text("Only group admins can use /registermembers.")
+        return
+
+    entities = msg.entities or []
+    text_mentions = [
+        e for e in entities if e.type == MessageEntity.TEXT_MENTION and e.user
+    ]
+    username_mention_count = sum(
+        1 for e in entities if e.type == MessageEntity.MENTION
+    )
+
+    if not text_mentions and not username_mention_count:
+        await msg.reply_text(
+            "No mentions found. Use the @ picker to mention members.\n"
+            "Example: /registermembers @Alice @Bob"
+        )
+        return
+
+    member_svc: MemberService = context.bot_data["member_service"]
+    count = 0
+    for entity in text_mentions:
+        mentioned_user = entity.user
+        if not mentioned_user.is_bot:
+            await member_svc.discover_member(chat.id, mentioned_user)
+            count += 1
+
+    lines = [f"Registered {count} member(s)."]
+    if username_mention_count:
+        lines.append(
+            f"{username_mention_count} @username mention(s) skipped — "
+            "Telegram does not provide user IDs for plain @username text. "
+            "Ask those users to send any message so the bot can register them automatically."
+        )
+    await msg.reply_text("\n\n".join(lines))
 
 
 async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
