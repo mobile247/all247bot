@@ -25,6 +25,7 @@ from bot.handlers.command_handlers import (
     all_handler,
     config_handler,
     deactivate_handler,
+    register_members_handler,
     setup_handler,
     syncmembers_handler,
 )
@@ -114,6 +115,7 @@ def build_application(config) -> Application:
     app.add_handler(CommandHandler("setup", setup_handler))
     app.add_handler(CommandHandler("all", all_handler))
     app.add_handler(CommandHandler("syncmembers", syncmembers_handler))
+    app.add_handler(CommandHandler("registermembers", register_members_handler))
     app.add_handler(CommandHandler("config", config_handler))
     app.add_handler(CommandHandler("deactivate", deactivate_handler))
 
