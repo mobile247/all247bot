@@ -29,7 +29,10 @@ async def get_connection(db_path: str) -> AsyncIterator[aiosqlite.Connection]:
 
 async def run_migrations(db_path: str) -> None:
     """Apply all pending SQL migrations in order. Safe to call on every startup."""
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    data_dir = os.path.dirname(db_path)
+    os.makedirs(data_dir, exist_ok=True)
+    # Restrict to owner-only — DB contains member display names and usernames
+    os.chmod(data_dir, 0o700)
 
     # Enable WAL mode once — it persists on disk, no need to re-apply per connection.
     async with aiosqlite.connect(db_path) as conn:

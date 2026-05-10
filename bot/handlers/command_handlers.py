@@ -5,6 +5,7 @@ Commands: /setup, /all, /syncmembers, /config, /deactivate
 Privacy guarantee: no message content is logged or stored at any point.
 """
 
+import html
 import logging
 
 from telegram import Update
@@ -178,7 +179,7 @@ async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         cfg = await group_svc.get_config(chat.id)
         lines = ["<b>Group config:</b>"]
         for k, v in cfg.items():
-            lines.append(f"  <b>{k}</b>: {v}")
+            lines.append(f"  <b>{html.escape(str(k))}</b>: {html.escape(str(v))}")
         await msg.reply_text("\n".join(lines), parse_mode="HTML")
         return
 
