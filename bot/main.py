@@ -6,13 +6,17 @@ Initializes config, DB, services, and starts the bot.
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
+from telegram import Update
 from telegram.ext import (
     Application,
     ChatMemberHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
@@ -25,15 +29,17 @@ from bot.handlers.command_handlers import (
     syncmembers_handler,
 )
 from bot.handlers.event_handlers import (
-    bot_added_handler,
     chat_member_handler,
     message_handler,
+    my_chat_member_handler,
 )
 from bot.repository.db import run_migrations
 from bot.services.group_service import GroupService
 from bot.services.member_service import MemberService
 from bot.services.mention_service import MentionService
 from bot.services.rate_limit_service import RateLimitService
+
+_HEARTBEAT_PATH = Path("/tmp/all247_heartbeat")
 
 
 def setup_logging(log_level: str) -> None:
@@ -46,11 +52,36 @@ def setup_logging(log_level: str) -> None:
     logging.getLogger("telegram").setLevel(logging.WARNING)
 
 
+async def _heartbeat_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Touch heartbeat file on every processed update for Docker HEALTHCHECK."""
+    try:
+        _HEARTBEAT_PATH.touch()
+    except OSError:
+        pass
+
+
 async def post_init(application: Application) -> None:
-    """Runs after bot starts. Purges stale rate limit entries."""
+    """Runs after bot starts. Runs migrations, purges stale rate limit entries, prunes stale members."""
+    logger = logging.getLogger(__name__)
+
+    config = application.bot_data["config"]
+    await run_migrations(config.db_path)
+
     rate_limit_svc: RateLimitService = application.bot_data["rate_limit_service"]
     purged = await rate_limit_svc.purge_old_entries()
-    logging.getLogger(__name__).info("Purged %d stale rate limit entries on startup", purged)
+    logger.info("Purged %d stale rate limit entries on startup", purged)
+
+    config = application.bot_data["config"]
+    if config.stale_member_prune_days > 0:
+        group_svc: GroupService = application.bot_data["group_service"]
+        member_svc: MemberService = application.bot_data["member_service"]
+        group_ids = await group_svc.get_all_active_group_ids()
+        total_pruned = 0
+        for gid in group_ids:
+            count = await member_svc.prune_stale_if_configured(gid, config.stale_member_prune_days)
+            total_pruned += count
+        if total_pruned:
+            logger.info("Stale members pruned on startup: total=%d", total_pruned)
 
 
 def build_application(config) -> Application:
@@ -76,6 +107,9 @@ def build_application(config) -> Application:
         "rate_limit_service": rate_limit_svc,
     })
 
+    # Heartbeat: runs for every update, before other handlers (group=-1)
+    app.add_handler(TypeHandler(Update, _heartbeat_handler), group=-1)
+
     # Command handlers
     app.add_handler(CommandHandler("setup", setup_handler))
     app.add_handler(CommandHandler("all", all_handler))
@@ -87,12 +121,17 @@ def build_application(config) -> Application:
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
     )
-    app.add_handler(ChatMemberHandler(chat_member_handler))
+    app.add_handler(
+        ChatMemberHandler(chat_member_handler, chat_member_types=ChatMemberHandler.CHAT_MEMBER)
+    )
+    app.add_handler(
+        ChatMemberHandler(my_chat_member_handler, chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER)
+    )
 
     return app
 
 
-async def main() -> None:
+def main() -> None:
     load_dotenv()
     config = load_config()
     setup_logging(config.log_level)
@@ -105,13 +144,11 @@ async def main() -> None:
         "Without this, passive member discovery will silently fail."
     )
 
-    await run_migrations(config.db_path)
-
     app = build_application(config)
 
     if config.webhook_url:
         logger.info("Starting in webhook mode on port %d", config.webhook_port)
-        await app.run_webhook(
+        app.run_webhook(
             listen="0.0.0.0",
             port=config.webhook_port,
             url_path=config.bot_token,
@@ -119,8 +156,10 @@ async def main() -> None:
         )
     else:
         logger.info("Starting in long polling mode")
-        await app.run_polling(allowed_updates=["message", "chat_member"])
+        app.run_polling(
+            allowed_updates=["message", "chat_member", "my_chat_member"]
+        )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
