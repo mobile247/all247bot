@@ -131,6 +131,14 @@ def build_application(config) -> Application:
     app.add_handler(CommandHandler("leave", leave_handler))
     app.add_handler(CommandHandler("deactivate", deactivate_handler))
 
+    # /all via caption (e.g. photo sent with /all as caption text)
+    app.add_handler(
+        MessageHandler(
+            filters.CAPTION & filters.CaptionRegex(r"^/all(@\w+)?(\s|$)"),
+            all_handler,
+        )
+    )
+
     # Event handlers
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
