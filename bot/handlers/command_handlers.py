@@ -1,6 +1,7 @@
 """
 Command handlers — respond to Telegram bot commands.
-Commands: /setup, /all, /syncmembers, /registermembers, /config, /deactivate, /leave
+Commands: /setup, /all, /syncmembers, /registermembers, /invite, /config, /deactivate, /leave
+Private DM: /start [token] (deep-link registration from /invite)
 
 Privacy guarantee: no message content is logged or stored at any point.
 """
@@ -13,6 +14,7 @@ from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from bot.services.group_service import GroupService
+from bot.services.invite_service import InviteService
 from bot.services.member_service import MemberService
 from bot.services.mention_service import MentionService
 from bot.services.rate_limit_service import RateLimitService
@@ -213,6 +215,100 @@ async def register_members_handler(
     await msg.reply_text("\n\n".join(lines))
 
 
+async def invite_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /invite — generate a deep-link registration URL for the group.
+    Admin-only. Posts a link members can click to DM the bot and self-register.
+    Token is multi-use for its lifetime (default: invite_expiry hours).
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in _GROUP_TYPES:
+        await msg.reply_text("/invite can only be used in group chats.")
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    if not await group_svc.is_active(chat.id):
+        await msg.reply_text("Bot not active in this group. Use /setup first.")
+        return
+
+    if not await is_group_admin(context.bot, chat.id, user.id):
+        await msg.reply_text("Only group admins can use /invite.")
+        return
+
+    cfg = await group_svc.get_config(chat.id)
+    expiry_hours = cfg["invite_expiry"]
+
+    invite_svc: InviteService = context.bot_data["invite_service"]
+    token = await invite_svc.create_invite(chat.id, expiry_hours)
+
+    bot_username = context.bot.username
+    deep_link = f"https://t.me/{bot_username}?start={token}"
+
+    await msg.reply_text(
+        f"<b>Member registration link</b>\n\n"
+        f"Share this with group members so they can register for /all mentions:\n"
+        f'<a href="{deep_link}">Tap here to register</a>\n\n'
+        f"Or open a chat with @{html.escape(bot_username)} and send:\n"
+        f"<code>/start {html.escape(token)}</code>\n\n"
+        f"Expires in {expiry_hours} hour(s).",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /start [token] — deep-link registration handler (private DM only).
+    Without token: show welcome message.
+    With valid token: register the user in the associated group.
+    """
+    msg = update.effective_message
+    user = update.effective_user
+
+    args = context.args or []
+    if not args:
+        await msg.reply_text(
+            "Hi! I'm all247 — I help mention all members in a Telegram group.\n\n"
+            "To register for group mentions, use the /invite link shared in your group."
+        )
+        return
+
+    token = args[0]
+    invite_svc: InviteService = context.bot_data["invite_service"]
+    group_id = await invite_svc.validate_token(token)
+
+    if group_id is None:
+        await msg.reply_text(
+            "This registration link is invalid or has expired.\n"
+            "Ask a group admin to run /invite again."
+        )
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    if not await group_svc.is_active(group_id):
+        await msg.reply_text("This registration link is no longer valid.")
+        return
+
+    member_svc: MemberService = context.bot_data["member_service"]
+    await member_svc.discover_member(group_id, user)
+
+    try:
+        group_chat = await context.bot.get_chat(group_id)
+        group_name = html.escape(group_chat.title or str(group_id))
+    except TelegramError:
+        group_name = "the group"
+
+    await msg.reply_text(
+        f"You've been registered in <b>{group_name}</b> "
+        f"and will be included in /all mentions.",
+        parse_mode="HTML",
+    )
+    logger.info("Member registered via invite: group_id=%d user_id=%d", group_id, user.id)
+
+
 async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     /config [key] [value] — view or update group configuration.
@@ -283,8 +379,10 @@ async def leave_handler(
 
     group_svc: GroupService = context.bot_data["group_service"]
     member_svc: MemberService = context.bot_data["member_service"]
+    invite_svc: InviteService = context.bot_data["invite_service"]
 
     await member_svc.purge_members(chat.id)
+    await invite_svc.delete_tokens_for_group(chat.id)
     await group_svc.deactivate(chat.id, user.id)
 
     await msg.reply_text(

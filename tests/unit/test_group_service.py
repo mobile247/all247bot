@@ -46,8 +46,9 @@ async def test_get_config_defaults_for_unknown_group(db_path):
     assert config == {
         "cooldown": 0,
         "delete_trigger": "off",
-        "restrict_all_to_admins": "off",
+        "invite_expiry": 24,
         "mention_mode": "display_name",
+        "restrict_all_to_admins": "off",
     }
 
 
