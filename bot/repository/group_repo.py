@@ -11,7 +11,8 @@ import aiosqlite
 logger = logging.getLogger(__name__)
 
 _ALLOWED_CONFIG_COLUMNS = frozenset(
-    {"cooldown_seconds", "delete_trigger", "restrict_all_to_admins", "mention_mode"}
+    {"cooldown_seconds", "delete_trigger", "restrict_all_to_admins", "mention_mode",
+     "invite_expiry_hours"}
 )
 
 

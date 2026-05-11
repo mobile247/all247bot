@@ -25,9 +25,11 @@ from bot.handlers.command_handlers import (
     all_handler,
     config_handler,
     deactivate_handler,
+    invite_handler,
     leave_handler,
     register_members_handler,
     setup_handler,
+    start_handler,
     syncmembers_handler,
 )
 from bot.handlers.event_handlers import (
@@ -37,6 +39,7 @@ from bot.handlers.event_handlers import (
 )
 from bot.repository.db import run_migrations
 from bot.services.group_service import GroupService
+from bot.services.invite_service import InviteService
 from bot.services.member_service import MemberService
 from bot.services.mention_service import MentionService
 from bot.services.rate_limit_service import RateLimitService
@@ -73,6 +76,9 @@ async def post_init(application: Application) -> None:
     purged = await rate_limit_svc.purge_old_entries()
     logger.info("Purged %d stale rate limit entries on startup", purged)
 
+    invite_svc: InviteService = application.bot_data["invite_service"]
+    await invite_svc.purge_expired_tokens()
+
     config = application.bot_data["config"]
     if config.stale_member_prune_days > 0:
         group_svc: GroupService = application.bot_data["group_service"]
@@ -90,6 +96,7 @@ def build_application(config) -> Application:
     """Wire up services, handlers, and return the configured Application."""
     # Services — injected into handler context via bot_data
     group_svc = GroupService(config.db_path)
+    invite_svc = InviteService(config.db_path)
     member_svc = MemberService(config.db_path)
     mention_svc = MentionService(config.max_mentionable_members)
     rate_limit_svc = RateLimitService(config.db_path, config.rate_limit_purge_days)
@@ -104,6 +111,7 @@ def build_application(config) -> Application:
     app.bot_data.update({
         "config": config,
         "group_service": group_svc,
+        "invite_service": invite_svc,
         "member_service": member_svc,
         "mention_service": mention_svc,
         "rate_limit_service": rate_limit_svc,
@@ -113,10 +121,12 @@ def build_application(config) -> Application:
     app.add_handler(TypeHandler(Update, _heartbeat_handler), group=-1)
 
     # Command handlers
+    app.add_handler(CommandHandler("start", start_handler, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("setup", setup_handler))
     app.add_handler(CommandHandler("all", all_handler))
     app.add_handler(CommandHandler("syncmembers", syncmembers_handler))
     app.add_handler(CommandHandler("registermembers", register_members_handler))
+    app.add_handler(CommandHandler("invite", invite_handler))
     app.add_handler(CommandHandler("config", config_handler))
     app.add_handler(CommandHandler("leave", leave_handler))
     app.add_handler(CommandHandler("deactivate", deactivate_handler))
