@@ -1,6 +1,6 @@
 """
 Command handlers — respond to Telegram bot commands.
-Commands: /setup, /all, /syncmembers, /registermembers, /invite, /config, /deactivate, /leave
+Commands: /setup, /all, /syncmembers, /registermembers, /invite, /members, /config, /deactivate, /leave
 Private DM: /start [token] (deep-link registration from /invite)
 
 Privacy guarantee: no message content is logged or stored at any point.
@@ -307,6 +307,46 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         parse_mode="HTML",
     )
     logger.info("Member registered via invite: group_id=%d user_id=%d", group_id, user.id)
+
+
+async def members_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /members — list all registered members in the group.
+    Admin-only. Shows count and alphabetical list of active members.
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in _GROUP_TYPES:
+        await msg.reply_text("/members can only be used in group chats.")
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    if not await group_svc.is_active(chat.id):
+        await msg.reply_text("Bot not active in this group. Use /setup first.")
+        return
+
+    if not await is_group_admin(context.bot, chat.id, user.id):
+        await msg.reply_text("Only group admins can use /members.")
+        return
+
+    member_svc: MemberService = context.bot_data["member_service"]
+    members = await member_svc.get_mentionable_members(chat.id)
+
+    if not members:
+        await msg.reply_text("No members registered yet.")
+        return
+
+    lines = [f"<b>Registered members ({len(members)}):</b>"]
+    for m in members:
+        name = html.escape(m["display_name"] or "")
+        if m["username"]:
+            lines.append(f"• {name} (@{html.escape(m['username'])})")
+        else:
+            lines.append(f"• {name}")
+
+    await msg.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
