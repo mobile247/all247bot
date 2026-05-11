@@ -12,7 +12,7 @@ from bot.repository import db, group_repo
 
 logger = logging.getLogger(__name__)
 
-VALID_CONFIG_KEYS = {"cooldown", "delete_trigger", "mention_mode", "restrict_all_to_admins"}
+VALID_CONFIG_KEYS = {"cooldown", "delete_trigger", "invite_expiry", "mention_mode", "restrict_all_to_admins"}
 
 VALID_CONFIG_VALUES = {
     "mention_mode": {"display_name", "username"},
@@ -24,15 +24,17 @@ VALID_CONFIG_VALUES = {
 _KEY_TO_COLUMN = {
     "cooldown": "cooldown_seconds",
     "delete_trigger": "delete_trigger",
-    "restrict_all_to_admins": "restrict_all_to_admins",
+    "invite_expiry": "invite_expiry_hours",
     "mention_mode": "mention_mode",
+    "restrict_all_to_admins": "restrict_all_to_admins",
 }
 
 _CONFIG_DEFAULTS = {
     "cooldown": 0,
     "delete_trigger": "off",
-    "restrict_all_to_admins": "off",
+    "invite_expiry": 24,
     "mention_mode": "display_name",
+    "restrict_all_to_admins": "off",
 }
 
 
@@ -40,8 +42,9 @@ def _row_to_config(row: aiosqlite.Row) -> dict:
     return {
         "cooldown": row["cooldown_seconds"],
         "delete_trigger": "on" if row["delete_trigger"] else "off",
-        "restrict_all_to_admins": "on" if row["restrict_all_to_admins"] else "off",
+        "invite_expiry": row["invite_expiry_hours"],
         "mention_mode": row["mention_mode"],
+        "restrict_all_to_admins": "on" if row["restrict_all_to_admins"] else "off",
     }
 
 
@@ -54,6 +57,14 @@ def _coerce_value(key: str, value: str):
             raise ValueError(f"'cooldown' must be an integer >= 0, got {value!r}")
         if int_val < 0:
             raise ValueError(f"'cooldown' must be >= 0, got {int_val}")
+        return int_val
+    if key == "invite_expiry":
+        try:
+            int_val = int(value)
+        except ValueError:
+            raise ValueError(f"'invite_expiry' must be an integer >= 1, got {value!r}")
+        if int_val < 1:
+            raise ValueError(f"'invite_expiry' must be >= 1, got {int_val}")
         return int_val
     if key in ("delete_trigger", "restrict_all_to_admins"):
         return 1 if value == "on" else 0

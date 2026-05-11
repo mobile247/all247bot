@@ -143,6 +143,7 @@ Valid keys and values for `/config`:
 |---|---|---|
 | `cooldown` | integer ≥ 0 (seconds) | 0 |
 | `delete_trigger` | `on` / `off` | `off` |
+| `invite_expiry` | integer ≥ 1 (hours) | 24 |
 | `mention_mode` | `display_name` / `username` | `display_name` |
 | `restrict_all_to_admins` | `on` / `off` | `off` |
 
