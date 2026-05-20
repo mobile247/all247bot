@@ -167,3 +167,69 @@ async def test_prune_stale_if_configured_keeps_recent_members(db_path):
     pruned = await svc.prune_stale_if_configured(-100, days=7)
     assert pruned == 0
     assert len(await svc.get_mentionable_members(-100)) == 1
+
+
+async def test_import_members_from_copies_active_members(db_path):
+    from bot.services.group_service import GroupService
+    gsvc = GroupService(db_path)
+    await gsvc.activate(-100, activated_by=1)
+    await gsvc.activate(-200, activated_by=1)
+
+    svc = MemberService(db_path)
+    for uid, name in [(1, "Alice"), (2, "Bob")]:
+        await svc.discover_member(-100, _make_user(uid, name))
+
+    count = await svc.import_members_from(-100, -200)
+
+    assert count == 2
+    members = await svc.get_mentionable_members(-200)
+    names = {m["display_name"] for m in members}
+    assert names == {"Alice", "Bob"}
+
+
+async def test_import_members_from_skips_inactive_members(db_path):
+    from bot.services.group_service import GroupService
+    gsvc = GroupService(db_path)
+    await gsvc.activate(-100, activated_by=1)
+    await gsvc.activate(-200, activated_by=1)
+
+    svc = MemberService(db_path)
+    await svc.discover_member(-100, _make_user(1, "Alice"))
+    await svc.discover_member(-100, _make_user(2, "Bob"))
+    await svc.mark_left(-100, 2)  # Bob is inactive
+
+    count = await svc.import_members_from(-100, -200)
+
+    assert count == 1
+    members = await svc.get_mentionable_members(-200)
+    assert members[0]["display_name"] == "Alice"
+
+
+async def test_import_members_from_does_not_overwrite_existing(db_path):
+    from bot.services.group_service import GroupService
+    gsvc = GroupService(db_path)
+    await gsvc.activate(-100, activated_by=1)
+    await gsvc.activate(-200, activated_by=1)
+
+    svc = MemberService(db_path)
+    await svc.discover_member(-100, _make_user(1, "Alice Old Name"))
+    await svc.discover_member(-200, _make_user(1, "Alice New Name"))
+
+    count = await svc.import_members_from(-100, -200)
+
+    assert count == 0  # INSERT OR IGNORE — nothing inserted
+    members = await svc.get_mentionable_members(-200)
+    assert members[0]["display_name"] == "Alice New Name"  # not overwritten
+
+
+async def test_import_members_from_empty_source_returns_zero(db_path):
+    from bot.services.group_service import GroupService
+    gsvc = GroupService(db_path)
+    await gsvc.activate(-100, activated_by=1)
+    await gsvc.activate(-200, activated_by=1)
+
+    svc = MemberService(db_path)
+    count = await svc.import_members_from(-100, -200)
+
+    assert count == 0
+    assert await svc.get_mentionable_members(-200) == []

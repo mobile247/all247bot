@@ -135,3 +135,77 @@ async def test_reactivate_after_deactivate(db_path):
     result = await svc.activate(-100, activated_by=2)
     assert result is True
     assert await svc.is_active(-100) is True
+
+
+async def test_activate_stores_title(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1, title="My Group")
+    groups = await svc.get_all_groups()
+    assert groups[0]["title"] == "My Group"
+
+
+async def test_update_title_stores_title(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1)
+    await svc.update_title(-100, "Renamed Group")
+    groups = await svc.get_all_groups()
+    assert groups[0]["title"] == "Renamed Group"
+
+
+async def test_update_title_replaces_existing(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1, title="Old Name")
+    await svc.update_title(-100, "New Name")
+    groups = await svc.get_all_groups()
+    assert groups[0]["title"] == "New Name"
+
+
+async def test_get_all_groups_returns_active_and_inactive(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1, title="Active Group")
+    await svc.activate(-200, activated_by=1, title="Inactive Group")
+    await svc.deactivate(-200, deactivated_by=1)
+    groups = await svc.get_all_groups()
+    assert len(groups) == 2
+    active = next(g for g in groups if g["group_id"] == -100)
+    inactive = next(g for g in groups if g["group_id"] == -200)
+    assert active["is_active"] is True
+    assert inactive["is_active"] is False
+
+
+async def test_migrate_moves_group_and_updates_cache(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1, title="Old Group")
+    # Warm the cache
+    assert await svc.is_active(-100) is True
+
+    result = await svc.migrate(-100, -200)
+
+    assert result is True
+    assert await svc.is_active(-100) is False
+    assert await svc.is_active(-200) is True
+
+
+async def test_migrate_preserves_config(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1)
+    await svc.update_config(-100, "cooldown", "60", changed_by=1)
+
+    await svc.migrate(-100, -200)
+
+    config = await svc.get_config(-200)
+    assert config["cooldown"] == 60
+
+
+async def test_migrate_returns_false_when_old_id_not_found(db_path):
+    svc = GroupService(db_path)
+    result = await svc.migrate(-999, -200)
+    assert result is False
+
+
+async def test_migrate_returns_false_when_new_id_already_exists(db_path):
+    svc = GroupService(db_path)
+    await svc.activate(-100, activated_by=1)
+    await svc.activate(-200, activated_by=1)
+    result = await svc.migrate(-100, -200)
+    assert result is False

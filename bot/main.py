@@ -28,6 +28,7 @@ from bot.handlers.command_handlers import (
     invite_handler,
     leave_handler,
     members_handler,
+    migrate_handler,
     register_members_handler,
     setup_handler,
     start_handler,
@@ -35,6 +36,7 @@ from bot.handlers.command_handlers import (
 )
 from bot.handlers.event_handlers import (
     chat_member_handler,
+    group_migration_handler,
     message_handler,
     my_chat_member_handler,
 )
@@ -80,9 +82,20 @@ async def post_init(application: Application) -> None:
     invite_svc: InviteService = application.bot_data["invite_service"]
     await invite_svc.purge_expired_tokens()
 
+    group_svc: GroupService = application.bot_data["group_service"]
+
+    # Backfill titles for groups that predate the title column
+    all_groups = await group_svc.get_all_groups()
+    for g in all_groups:
+        if g["title"] is None:
+            try:
+                chat_obj = await application.bot.get_chat(g["group_id"])
+                await group_svc.update_title(g["group_id"], chat_obj.title)
+            except Exception:
+                pass  # bot may no longer be in the group — skip silently
+
     config = application.bot_data["config"]
     if config.stale_member_prune_days > 0:
-        group_svc: GroupService = application.bot_data["group_service"]
         member_svc: MemberService = application.bot_data["member_service"]
         group_ids = await group_svc.get_all_active_group_ids()
         total_pruned = 0
@@ -131,6 +144,7 @@ def build_application(config) -> Application:
     app.add_handler(CommandHandler("members", members_handler))
     app.add_handler(CommandHandler("config", config_handler))
     app.add_handler(CommandHandler("leave", leave_handler))
+    app.add_handler(CommandHandler("migrate", migrate_handler))
     app.add_handler(CommandHandler("deactivate", deactivate_handler))
 
     # /all via caption (e.g. photo sent with /all as caption text)
@@ -142,6 +156,9 @@ def build_application(config) -> Application:
     )
 
     # Event handlers
+    app.add_handler(
+        MessageHandler(filters.StatusUpdate.MIGRATE, group_migration_handler)
+    )
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
     )

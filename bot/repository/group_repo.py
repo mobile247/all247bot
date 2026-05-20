@@ -73,6 +73,77 @@ async def get_all_active_group_ids(conn: aiosqlite.Connection) -> list[int]:
     return [row[0] for row in rows]
 
 
+async def update_group_title(
+    conn: aiosqlite.Connection, group_id: int, title: str | None
+) -> None:
+    """Store or refresh the group's display title."""
+    await conn.execute(
+        "UPDATE groups SET title = ?, updated_at = datetime('now') WHERE group_id = ?",
+        (title, group_id),
+    )
+    await conn.commit()
+
+
+async def migrate_group_id(
+    conn: aiosqlite.Connection, old_id: int, new_id: int
+) -> bool:
+    """
+    Migrate all data from old_id to new_id (group → supergroup conversion).
+    Copies the group row, migrates members and rate_limit_log, deletes old row.
+    Registration tokens cascade-delete with the old row (they're short-lived).
+    Returns False if old_id not found or new_id already exists.
+    """
+    async with conn.execute(
+        "SELECT COUNT(*) FROM groups WHERE group_id = ?", (new_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if row and row[0] > 0:
+        return False  # new_id already has a record — skip
+
+    async with conn.execute(
+        "SELECT COUNT(*) FROM groups WHERE group_id = ?", (old_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row or row[0] == 0:
+        return False  # old_id not found — nothing to migrate
+
+    # Copy group row with new PK
+    await conn.execute(
+        """
+        INSERT INTO groups (
+            group_id, is_active, activated_by, activated_at,
+            mention_mode, cooldown_seconds, delete_trigger,
+            restrict_all_to_admins, invite_expiry_hours,
+            created_at, updated_at
+        )
+        SELECT
+            ?, is_active, activated_by, activated_at,
+            mention_mode, cooldown_seconds, delete_trigger,
+            restrict_all_to_admins, invite_expiry_hours,
+            created_at, datetime('now')
+        FROM groups WHERE group_id = ?
+        """,
+        (new_id, old_id),
+    )
+    # Migrate members (FK now satisfied — new_id exists)
+    await conn.execute(
+        "UPDATE members SET group_id = ? WHERE group_id = ?",
+        (new_id, old_id),
+    )
+    # Migrate rate limit log (no FK, just update)
+    await conn.execute(
+        "UPDATE rate_limit_log SET group_id = ? WHERE group_id = ?",
+        (new_id, old_id),
+    )
+    # Delete old row — registration_tokens CASCADE DELETE automatically
+    await conn.execute(
+        "DELETE FROM groups WHERE group_id = ?",
+        (old_id,),
+    )
+    await conn.commit()
+    return True
+
+
 async def update_group_config(
     conn: aiosqlite.Connection, group_id: int, key: str, value: Any
 ) -> None:
