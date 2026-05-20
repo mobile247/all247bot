@@ -461,8 +461,19 @@ async def migrate_handler(
         if not groups:
             await msg.reply_text("No groups found in the database.")
             return
-        lines = ["<b>Known groups:</b>"]
+        # Filter to groups where the caller is an admin
+        visible = []
         for g in groups:
+            try:
+                if await is_group_admin(context.bot, g["group_id"], user.id):
+                    visible.append(g)
+            except Exception:
+                pass  # bot no longer in group or group inaccessible — skip
+        if not visible:
+            await msg.reply_text("No groups found where you are an admin.")
+            return
+        lines = ["<b>Known groups:</b>"]
+        for g in visible:
             title = html.escape(g["title"] or "Untitled")
             status = "active" if g["is_active"] else "inactive"
             lines.append(f"• <code>{g['group_id']}</code> — {title} [{status}]")
