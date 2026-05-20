@@ -85,7 +85,7 @@ class GroupService:
                 ids = await group_repo.get_all_active_group_ids(conn)
             self._active_groups = set(ids)
 
-    async def activate(self, group_id: int, activated_by: int) -> bool:
+    async def activate(self, group_id: int, activated_by: int, title: str | None = None) -> bool:
         """
         Activate the bot for a group. Returns False if already active.
         Logs group_id, activated_by, timestamp.
@@ -96,10 +96,18 @@ class GroupService:
             if row and row["is_active"]:
                 return False
             await group_repo.activate_group(conn, group_id, activated_by)
+            if title is not None:
+                await group_repo.update_group_title(conn, group_id, title)
         if self._active_groups is not None:
             self._active_groups.add(group_id)
         logger.info("Group activated: group_id=%d activated_by=%d", group_id, activated_by)
         return True
+
+    async def update_title(self, group_id: int, title: str | None) -> None:
+        """Store or refresh the group's display title."""
+        async with db.get_connection(self._db_path) as conn:
+            await group_repo.upsert_group(conn, group_id)
+            await group_repo.update_group_title(conn, group_id, title)
 
     async def deactivate(self, group_id: int, deactivated_by: int) -> None:
         """Deactivate the bot for a group. Logs group_id, deactivated_by, timestamp."""
@@ -153,6 +161,36 @@ class GroupService:
             db_value,
             changed_by,
         )
+
+    async def migrate(self, old_id: int, new_id: int) -> bool:
+        """
+        Migrate group + members from old_id to new_id (group → supergroup).
+        Updates in-memory cache. Returns False if migration was skipped.
+        """
+        async with db.get_connection(self._db_path) as conn:
+            migrated = await group_repo.migrate_group_id(conn, old_id, new_id)
+        if not migrated:
+            return False
+        if self._active_groups is not None:
+            if old_id in self._active_groups:
+                self._active_groups.discard(old_id)
+                self._active_groups.add(new_id)
+        logger.info(
+            "Group migrated to supergroup: old_id=%d new_id=%d", old_id, new_id
+        )
+        return True
+
+    async def get_all_groups(self) -> list[dict]:
+        """Return all known groups (active and inactive) with id, title, is_active."""
+        async with db.get_connection(self._db_path) as conn:
+            async with conn.execute(
+                "SELECT group_id, title, is_active FROM groups ORDER BY created_at"
+            ) as cur:
+                rows = await cur.fetchall()
+        return [
+            {"group_id": r["group_id"], "title": r["title"], "is_active": bool(r["is_active"])}
+            for r in rows
+        ]
 
     async def get_all_active_group_ids(self) -> list[int]:
         """Return group_ids for all currently active groups."""

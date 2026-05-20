@@ -107,6 +107,22 @@ class MemberService:
         logger.info("Members purged: group_id=%d count=%d", group_id, count)
         return count
 
+    async def import_members_from(self, from_group_id: int, to_group_id: int) -> int:
+        """
+        Copy all active members from from_group_id into to_group_id.
+        Existing members in to_group_id are not overwritten (INSERT OR IGNORE).
+        Returns count of newly inserted rows.
+        """
+        async with db.get_connection(self._db_path) as conn:
+            count = await member_repo.copy_members_to_group(conn, from_group_id, to_group_id)
+        logger.info(
+            "Members imported: from_group_id=%d to_group_id=%d count=%d",
+            from_group_id,
+            to_group_id,
+            count,
+        )
+        return count
+
     async def prune_stale_if_configured(self, group_id: int, days: int) -> int:
         """
         If days > 0, set is_active=0 for members with no last_seen_at activity

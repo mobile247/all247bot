@@ -48,8 +48,10 @@ async def setup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     group_svc: GroupService = context.bot_data["group_service"]
     member_svc: MemberService = context.bot_data["member_service"]
 
-    activated = await group_svc.activate(chat.id, user.id)
+    activated = await group_svc.activate(chat.id, user.id, title=chat.title)
     if not activated:
+        # Refresh title in case it changed
+        await group_svc.update_title(chat.id, chat.title)
         await msg.reply_text("Bot is already active in this group.")
         return
 
@@ -431,6 +433,80 @@ async def leave_handler(
     )
     await context.bot.leave_chat(chat.id)
     logger.info("Bot left group after /leave: group_id=%d", chat.id)
+
+
+async def migrate_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    /migrate [old_group_id new_group_id] — DM-only admin command.
+    No args: list all known groups with IDs and titles.
+    With both IDs: import members from old group into new group.
+    Caller must be an admin of the target (new) group.
+    Use after a group→supergroup migration where the bot lost its setup.
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type != "private":
+        await msg.reply_text("Use /migrate in a private chat with the bot to avoid group noise.")
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    args = context.args or []
+
+    if not args:
+        groups = await group_svc.get_all_groups()
+        if not groups:
+            await msg.reply_text("No groups found in the database.")
+            return
+        lines = ["<b>Known groups:</b>"]
+        for g in groups:
+            title = html.escape(g["title"] or "Untitled")
+            status = "active" if g["is_active"] else "inactive"
+            lines.append(f"• <code>{g['group_id']}</code> — {title} [{status}]")
+        lines.append("\nUsage: <code>/migrate &lt;old_group_id&gt; &lt;new_group_id&gt;</code>")
+        await msg.reply_text("\n".join(lines), parse_mode="HTML")
+        return
+
+    if len(args) != 2:
+        await msg.reply_text(
+            "Usage: <code>/migrate &lt;old_group_id&gt; &lt;new_group_id&gt;</code>\n"
+            "Run /migrate with no arguments to list known groups.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        old_group_id = int(args[0])
+        new_group_id = int(args[1])
+    except ValueError:
+        await msg.reply_text("Both IDs must be integers (e.g. -1001234567890).")
+        return
+
+    if old_group_id == new_group_id:
+        await msg.reply_text("Old and new group IDs must be different.")
+        return
+
+    if not await is_group_admin(context.bot, new_group_id, user.id):
+        await msg.reply_text("You must be an admin of the target group to run /migrate.")
+        return
+
+    if not await group_svc.is_active(new_group_id):
+        await msg.reply_text("Target group is not active. Run /setup in that group first.")
+        return
+
+    member_svc: MemberService = context.bot_data["member_service"]
+    count = await member_svc.import_members_from(old_group_id, new_group_id)
+
+    if count == 0:
+        await msg.reply_text(
+            "No members imported. Either the old group ID has no records, "
+            "or all its members are already registered in the target group."
+        )
+    else:
+        await msg.reply_text(f"Imported {count} member(s) into the target group.")
 
 
 async def deactivate_handler(

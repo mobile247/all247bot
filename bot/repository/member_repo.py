@@ -126,6 +126,27 @@ async def hard_delete_stale_members(
     return cur.rowcount
 
 
+async def copy_members_to_group(
+    conn: aiosqlite.Connection, from_id: int, to_id: int
+) -> int:
+    """
+    Copy all active members from from_id into to_id.
+    Uses INSERT OR IGNORE — existing members in to_id are not overwritten.
+    Returns number of rows inserted.
+    """
+    cur = await conn.execute(
+        """
+        INSERT OR IGNORE INTO members (group_id, user_id, display_name, username, last_seen_at, is_active)
+        SELECT ?, user_id, display_name, username, last_seen_at, 1
+        FROM members
+        WHERE group_id = ? AND is_active = 1
+        """,
+        (to_id, from_id),
+    )
+    await conn.commit()
+    return cur.rowcount
+
+
 async def delete_group_members(
     conn: aiosqlite.Connection, group_id: int
 ) -> int:
