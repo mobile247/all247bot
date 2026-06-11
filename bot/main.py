@@ -160,7 +160,7 @@ def build_application(config) -> Application:
         MessageHandler(filters.StatusUpdate.MIGRATE, group_migration_handler)
     )
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
+        MessageHandler(filters.TEXT, message_handler)
     )
     app.add_handler(
         ChatMemberHandler(chat_member_handler, chat_member_types=ChatMemberHandler.CHAT_MEMBER)
