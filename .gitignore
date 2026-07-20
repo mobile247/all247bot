@@ -36,3 +36,10 @@ htmlcov/
 
 # Docker
 *.log
+
+# Internal dev docs (not for public repo)
+/CLAUDE.md
+/docs/BRD.md
+/docs/TECHNICAL_SPEC.md
+/docs/TASKS.md
+/docs/ARCHITECTURE.md
