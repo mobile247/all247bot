@@ -80,6 +80,7 @@ docker compose up -d
 | `/setup` | Admin | Activate bot in group |
 | `/all` | Anyone* | Mention all known members |
 | `/syncmembers` | Admin | Sync current admins into member registry |
+| `/prunemembers` | Admin | Remove members who left the group from `/all` (bot needs no admin rights) |
 | `/registermembers` | Admin | Bulk-register members from a forwarded message |
 | `/config` | Admin | View or update group settings |
 | `/deactivate` | Admin | Deactivate bot (keeps data) |
@@ -114,6 +115,12 @@ The bot can only mention members it knows about. It builds its registry through:
 
 Non-admin members who have not sent any message since the bot was added will not appear
 in `/all` output. This is a Telegram Bot API constraint, not a bug.
+
+Members who leave or are removed are dropped from `/all` automatically. The bot detects this
+from the group's "left the group" service message, and no admin rights are needed. If removals
+are missed (for example, because *Hide join/leave messages* is enabled), a group admin can run
+**`/prunemembers`**. It checks every registered member against Telegram and drops anyone no
+longer in the group. This command also works without giving the bot admin rights.
 
 ---
 

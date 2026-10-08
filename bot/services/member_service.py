@@ -4,13 +4,22 @@ Handles passive discovery, admin sync, and lifecycle transitions.
 Bots are ALWAYS excluded from the registry.
 """
 
+import asyncio
 import logging
 
 from telegram import Bot, User
+from telegram.error import BadRequest, RetryAfter, TelegramError
 
 from bot.repository import db, member_repo
 
 logger = logging.getLogger(__name__)
+
+# Delay between getChatMember calls during /prunemembers (stays well under API limits)
+PRUNE_CHECK_DELAY_SECONDS = 0.05
+MAX_RETRY_ATTEMPTS = 3
+_DEPARTED_STATUSES = frozenset({"left", "kicked"})
+# BadRequest messages meaning the user is not (or no longer) in the chat
+_NOT_IN_CHAT_ERRORS = ("user not found", "participant_id_invalid", "member not found")
 
 
 class MemberService:
@@ -95,6 +104,57 @@ class MemberService:
             }
             for row in rows
         ]
+
+    async def prune_departed(self, group_id: int, bot: Bot) -> tuple[int, int]:
+        """
+        Check every active member via getChatMember and set is_active=0 for
+        those no longer in the group (left, kicked, restricted non-member,
+        or unknown to Telegram). Works without the bot being a group admin.
+        Returns (removed_count, failed_count). Failed checks are left untouched.
+        """
+        members = await self.get_mentionable_members(group_id)
+        departed: list[int] = []
+        failed = 0
+        for m in members:
+            try:
+                if await self._is_departed(bot, group_id, m["user_id"]):
+                    departed.append(m["user_id"])
+            except TelegramError as e:
+                failed += 1
+                logger.warning(
+                    "Prune check failed: group_id=%d error=%s", group_id, type(e).__name__
+                )
+            await asyncio.sleep(PRUNE_CHECK_DELAY_SECONDS)
+
+        async with db.get_connection(self._db_path) as conn:
+            for user_id in departed:
+                await member_repo.set_member_active(conn, group_id, user_id, 0)
+        logger.info(
+            "Departed members pruned: group_id=%d removed=%d failed=%d",
+            group_id,
+            len(departed),
+            failed,
+        )
+        return len(departed), failed
+
+    @staticmethod
+    async def _is_departed(bot: Bot, group_id: int, user_id: int) -> bool:
+        for attempt in range(MAX_RETRY_ATTEMPTS):
+            try:
+                cm = await bot.get_chat_member(group_id, user_id)
+            except RetryAfter as e:
+                if attempt == MAX_RETRY_ATTEMPTS - 1:
+                    raise
+                await asyncio.sleep(e.retry_after)
+                continue
+            except BadRequest as e:
+                if any(s in str(e).lower() for s in _NOT_IN_CHAT_ERRORS):
+                    return True
+                raise
+            if cm.status in _DEPARTED_STATUSES:
+                return True
+            return cm.status == "restricted" and not getattr(cm, "is_member", True)
+        return False
 
     async def purge_members(self, group_id: int) -> int:
         """

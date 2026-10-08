@@ -29,6 +29,7 @@ from bot.handlers.command_handlers import (
     leave_handler,
     members_handler,
     migrate_handler,
+    prunemembers_handler,
     register_members_handler,
     setup_handler,
     start_handler,
@@ -37,8 +38,10 @@ from bot.handlers.command_handlers import (
 from bot.handlers.event_handlers import (
     chat_member_handler,
     group_migration_handler,
+    left_chat_member_handler,
     message_handler,
     my_chat_member_handler,
+    new_chat_members_handler,
 )
 from bot.repository.db import run_migrations
 from bot.services.group_service import GroupService
@@ -48,6 +51,9 @@ from bot.services.mention_service import MentionService
 from bot.services.rate_limit_service import RateLimitService
 
 _HEARTBEAT_PATH = Path("/tmp/all247_heartbeat")
+
+# chat_member is excluded by Telegram's default — must be requested explicitly
+_ALLOWED_UPDATES = ["message", "chat_member", "my_chat_member"]
 
 
 def setup_logging(log_level: str) -> None:
@@ -139,6 +145,7 @@ def build_application(config) -> Application:
     app.add_handler(CommandHandler("setup", setup_handler))
     app.add_handler(CommandHandler("all", all_handler))
     app.add_handler(CommandHandler("syncmembers", syncmembers_handler))
+    app.add_handler(CommandHandler("prunemembers", prunemembers_handler))
     app.add_handler(CommandHandler("registermembers", register_members_handler))
     app.add_handler(CommandHandler("invite", invite_handler))
     app.add_handler(CommandHandler("members", members_handler))
@@ -158,6 +165,12 @@ def build_application(config) -> Application:
     # Event handlers
     app.add_handler(
         MessageHandler(filters.StatusUpdate.MIGRATE, group_migration_handler)
+    )
+    app.add_handler(
+        MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, left_chat_member_handler)
+    )
+    app.add_handler(
+        MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_members_handler)
     )
     app.add_handler(
         MessageHandler(filters.TEXT, message_handler)
@@ -197,11 +210,12 @@ def main() -> None:
             port=config.webhook_port,
             url_path=config.bot_token,
             webhook_url=f"{config.webhook_url}/{config.bot_token}",
+            allowed_updates=_ALLOWED_UPDATES,
         )
     else:
         logger.info("Starting in long polling mode")
         app.run_polling(
-            allowed_updates=["message", "chat_member", "my_chat_member"]
+            allowed_updates=_ALLOWED_UPDATES
         )
 
 

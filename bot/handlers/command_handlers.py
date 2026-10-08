@@ -1,6 +1,6 @@
 """
 Command handlers — respond to Telegram bot commands.
-Commands: /setup, /all, /syncmembers, /registermembers, /invite, /members, /config, /deactivate, /leave
+Commands: /setup, /all, /syncmembers, /prunemembers, /registermembers, /invite, /members, /config, /deactivate, /leave
 Private DM: /start [token] (deep-link registration from /invite)
 
 Privacy guarantee: no message content is logged or stored at any point.
@@ -155,6 +155,39 @@ async def syncmembers_handler(
         "Note: The Telegram API does not allow listing all group members. "
         "Non-admin members are added automatically when they send any message in the group."
     )
+
+
+async def prunemembers_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    /prunemembers — remove members who are no longer in the group from /all.
+    Checks each registered member via getChatMember (bot does NOT need admin).
+    Caller must be a group admin. Replies with count removed.
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in _GROUP_TYPES:
+        await msg.reply_text("/prunemembers can only be used in group chats.")
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    if not await group_svc.is_active(chat.id):
+        await msg.reply_text("Bot not active in this group. Use /setup first.")
+        return
+
+    if not await is_group_admin(context.bot, chat.id, user.id):
+        await msg.reply_text("Only group admins can use /prunemembers.")
+        return
+
+    member_svc: MemberService = context.bot_data["member_service"]
+    removed, failed = await member_svc.prune_departed(chat.id, context.bot)
+    reply = f"Removed {removed} member(s) who are no longer in this group."
+    if failed:
+        reply += f"\n\n{failed} member(s) could not be checked — try again later."
+    await msg.reply_text(reply)
 
 
 async def register_members_handler(

@@ -1,6 +1,7 @@
 """
 Event handlers — respond to non-command Telegram updates.
-Handles: passive member discovery, join/leave events, bot-added-to-group, bot-removed-from-group.
+Handles: passive member discovery, join/leave events (chat_member updates +
+left_chat_member/new_chat_members service messages), bot-added-to-group, bot-removed-from-group.
 
 Privacy guarantee: message content is discarded immediately after metadata extraction.
 Only user_id, display_name, username are retained. Nothing else.
@@ -68,11 +69,59 @@ async def chat_member_handler(
 
     member_svc: MemberService = context.bot_data["member_service"]
 
-    if new_member.status in _ACTIVE_MEMBER_STATUSES:
+    # 'restricted' with is_member=False means the user is NOT in the chat
+    if new_member.status == "restricted" and not getattr(new_member, "is_member", True):
+        await member_svc.mark_left(chat.id, user.id)
+    elif new_member.status in _ACTIVE_MEMBER_STATUSES:
         # discover_member upserts with latest display name and sets is_active=1
         await member_svc.discover_member(chat.id, user)
     elif new_member.status in _INACTIVE_MEMBER_STATUSES:
         await member_svc.mark_left(chat.id, user.id)
+
+
+async def left_chat_member_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Fallback leave/kick tracking via the 'left_chat_member' service message.
+    chat_member updates are only delivered when the bot is a group admin;
+    service messages reach the bot regardless, so removals are never missed.
+    Sets is_active=0. Idempotent with chat_member_handler.
+    """
+    msg = update.message
+    if msg is None or msg.left_chat_member is None:
+        return
+
+    user = msg.left_chat_member
+    if user.is_bot:
+        return
+
+    invalidate_admin_cache(msg.chat.id)
+    member_svc: MemberService = context.bot_data["member_service"]
+    await member_svc.mark_left(msg.chat.id, user.id)
+
+
+async def new_chat_members_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Fallback join tracking via the 'new_chat_members' service message.
+    Upserts each non-bot user and sets is_active=1 (covers re-added members
+    when the bot is not admin and receives no chat_member updates).
+    Skips inactive groups.
+    """
+    msg = update.message
+    if msg is None or not msg.new_chat_members:
+        return
+
+    group_svc: GroupService = context.bot_data["group_service"]
+    if not await group_svc.is_active(msg.chat.id):
+        return
+
+    member_svc: MemberService = context.bot_data["member_service"]
+    for user in msg.new_chat_members:
+        if not user.is_bot:
+            await member_svc.discover_member(msg.chat.id, user)
 
 
 async def bot_added_handler(

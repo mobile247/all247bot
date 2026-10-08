@@ -233,3 +233,85 @@ async def test_import_members_from_empty_source_returns_zero(db_path):
 
     assert count == 0
     assert await svc.get_mentionable_members(-200) == []
+
+
+def _bot_with_statuses(statuses: dict):
+    """Fake Bot whose get_chat_member returns/raises per user_id."""
+
+    async def get_chat_member(chat_id, user_id):
+        result = statuses[user_id]
+        if isinstance(result, Exception):
+            raise result
+        status, is_member = result if isinstance(result, tuple) else (result, True)
+        cm = MagicMock()
+        cm.status = status
+        cm.is_member = is_member
+        return cm
+
+    bot = MagicMock()
+    bot.get_chat_member = AsyncMock(side_effect=get_chat_member)
+    return bot
+
+
+@pytest.fixture
+def no_prune_delay(monkeypatch):
+    monkeypatch.setattr("bot.services.member_service.PRUNE_CHECK_DELAY_SECONDS", 0)
+
+
+async def test_prune_departed_removes_left_kicked_and_unknown(db_path, no_prune_delay):
+    from telegram.error import BadRequest
+
+    await _setup_group(db_path)
+    svc = MemberService(db_path)
+    for uid, name in [(1, "A"), (2, "B"), (3, "C"), (4, "D"), (5, "E"), (6, "F")]:
+        await svc.discover_member(-100, _make_user(uid, name))
+
+    bot = _bot_with_statuses({
+        1: "member",
+        2: "left",
+        3: "kicked",
+        4: ("restricted", False),
+        5: ("restricted", True),
+        6: BadRequest("User not found"),
+    })
+    removed, failed = await svc.prune_departed(-100, bot)
+
+    assert (removed, failed) == (4, 0)
+    remaining = [m["user_id"] for m in await svc.get_mentionable_members(-100)]
+    assert remaining == [1, 5]
+
+
+async def test_prune_departed_leaves_member_on_unrelated_error(db_path, no_prune_delay):
+    from telegram.error import BadRequest, NetworkError
+
+    await _setup_group(db_path)
+    svc = MemberService(db_path)
+    await svc.discover_member(-100, _make_user(1, "A"))
+    await svc.discover_member(-100, _make_user(2, "B"))
+
+    bot = _bot_with_statuses({
+        1: NetworkError("timeout"),
+        2: BadRequest("Chat not found"),
+    })
+    removed, failed = await svc.prune_departed(-100, bot)
+
+    assert (removed, failed) == (0, 2)
+    assert len(await svc.get_mentionable_members(-100)) == 2
+
+
+async def test_prune_departed_retries_on_retry_after(db_path, no_prune_delay, monkeypatch):
+    from telegram.error import RetryAfter
+
+    await _setup_group(db_path)
+    svc = MemberService(db_path)
+    await svc.discover_member(-100, _make_user(1, "A"))
+
+    left = MagicMock()
+    left.status = "left"
+    bot = MagicMock()
+    bot.get_chat_member = AsyncMock(side_effect=[RetryAfter(0), left])
+
+    removed, failed = await svc.prune_departed(-100, bot)
+
+    assert (removed, failed) == (1, 0)
+    assert bot.get_chat_member.await_count == 2
