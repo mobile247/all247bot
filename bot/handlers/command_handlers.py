@@ -42,7 +42,8 @@ async def setup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Fetch admin list once — used for both auth check and member sync
     admins = await get_chat_admins(context.bot, chat.id)
     if not any(m.user.id == user.id for m in admins):
-        await msg.reply_text("Only group admins can use /setup.")
+        # Silent ignore: members can tap /setup links in chat, a reply is just noise
+        logger.debug("Non-admin setup ignored: group_id=%d", chat.id)
         return
 
     group_svc: GroupService = context.bot_data["group_service"]
@@ -145,7 +146,8 @@ async def syncmembers_handler(
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /syncmembers.")
+        # Silent ignore: members can tap /syncmembers links in chat, a reply is just noise
+        logger.debug("Non-admin syncmembers ignored: group_id=%d", chat.id)
         return
 
     member_svc: MemberService = context.bot_data["member_service"]
@@ -179,7 +181,8 @@ async def prunemembers_handler(
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /prunemembers.")
+        # Silent ignore: members can tap /prunemembers links in chat, a reply is just noise
+        logger.debug("Non-admin prunemembers ignored: group_id=%d", chat.id)
         return
 
     member_svc: MemberService = context.bot_data["member_service"]
@@ -214,7 +217,8 @@ async def register_members_handler(
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /registermembers.")
+        # Silent ignore: members can tap /registermembers links in chat, a reply is just noise
+        logger.debug("Non-admin registermembers ignored: group_id=%d", chat.id)
         return
 
     entities = msg.entities or []
@@ -270,7 +274,8 @@ async def invite_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /invite.")
+        # Silent ignore: members can tap /invite links in chat, a reply is just noise
+        logger.debug("Non-admin invite ignored: group_id=%d", chat.id)
         return
 
     cfg = await group_svc.get_config(chat.id)
@@ -363,7 +368,8 @@ async def members_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /members.")
+        # Silent ignore: members can tap /members links in chat, a reply is just noise
+        logger.debug("Non-admin members ignored: group_id=%d", chat.id)
         return
 
     member_svc: MemberService = context.bot_data["member_service"]
@@ -400,7 +406,8 @@ async def config_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /config.")
+        # Silent ignore: members can tap /config links in chat, a reply is just noise
+        logger.debug("Non-admin config ignored: group_id=%d", chat.id)
         return
 
     group_svc: GroupService = context.bot_data["group_service"]
@@ -449,7 +456,8 @@ async def leave_handler(
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /leave.")
+        # Silent ignore: members can tap /leave links in chat, a reply is just noise
+        logger.debug("Non-admin leave ignored: group_id=%d", chat.id)
         return
 
     group_svc: GroupService = context.bot_data["group_service"]
@@ -569,7 +577,8 @@ async def deactivate_handler(
         return
 
     if not await is_group_admin(context.bot, chat.id, user.id):
-        await msg.reply_text("Only group admins can use /deactivate.")
+        # Silent ignore: members can tap /deactivate links in chat, a reply is just noise
+        logger.debug("Non-admin deactivate ignored: group_id=%d", chat.id)
         return
 
     group_svc: GroupService = context.bot_data["group_service"]
